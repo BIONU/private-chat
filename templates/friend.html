@@ -21,16 +21,20 @@
          word-wrap: break-word; }
   .me { background: #0084ff; color: #fff; margin-left: auto; }
   .them { background: #e4e6eb; color: #000; }
+  .msg img { max-width: 100%; border-radius: 8px; display: block; margin-top: 4px; }
   .sys { text-align: center; color: #888; font-size: 13px; margin: 8px 0; }
-  #inputbar { display: flex; padding: 8px; border-top: 1px solid #ddd; }
-  #inputbar input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px;
-                    font-size: 15px; outline: none; }
-  #inputbar button { margin-left: 8px; padding: 10px 18px; border: 0;
-                     background: #0084ff; color: #fff; border-radius: 20px; cursor: pointer; }
+  #inputbar { display: flex; padding: 8px; border-top: 1px solid #ddd; gap: 6px;
+              align-items: center; }
+  #inputbar input[type=text] { flex: 1; padding: 10px; border: 1px solid #ccc;
+                                border-radius: 20px; font-size: 15px; outline: none; }
+  #inputbar button { padding: 10px 16px; border: 0; background: #0084ff; color: #fff;
+                     border-radius: 20px; cursor: pointer; font-size: 15px; }
+  #fileBtn { background: #e4e6eb; color: #333; padding: 10px 14px; border-radius: 50%;
+             cursor: pointer; font-size: 18px; user-select: none; }
+  #fileInput { display: none; }
 </style>
 </head>
 <body>
-
 <div id="login">
   <h2>💬 แชทกับแอดมิน</h2>
   <input id="nameInput" placeholder="ใส่ชื่อของคุณ" maxlength="30">
@@ -41,31 +45,35 @@
   <div id="header">💬 แชทกับแอดมิน</div>
   <div id="messages"></div>
   <div id="inputbar">
-    <input id="msgInput" placeholder="พิมพ์ข้อความ..." autocomplete="off">
+    <label id="fileBtn" for="fileInput">📎</label>
+    <input id="fileInput" type="file" accept="image/*">
+    <input id="msgInput" type="text" placeholder="พิมพ์ข้อความ..." autocomplete="off">
     <button onclick="sendMsg()">ส่ง</button>
   </div>
 </div>
 
 <script>
 const socket = io();
-let myName = '';
 
 function joinChat() {
   const name = document.getElementById('nameInput').value.trim();
   if (!name) return alert('กรุณาใส่ชื่อ');
-  myName = name;
   socket.emit('friend_join', { name });
-
   document.getElementById('login').style.display = 'none';
-  const chat = document.getElementById('chat');
-  chat.style.display = 'flex';
+  document.getElementById('chat').style.display = 'flex';
 }
 
-function addMsg(text, cls) {
+function addMsg(content, cls, type = 'text') {
   const box = document.getElementById('messages');
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
-  div.textContent = text;
+  if (type === 'image') {
+    const img = document.createElement('img');
+    img.src = content;
+    div.appendChild(img);
+  } else {
+    div.textContent = content;
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
@@ -83,14 +91,32 @@ function sendMsg() {
   const input = document.getElementById('msgInput');
   const msg = input.value.trim();
   if (!msg) return;
-  socket.emit('friend_message', { msg });
-  addMsg(msg, 'me');
+  socket.emit('friend_message', { msg, type: 'text' });
+  addMsg(msg, 'me', 'text');
   input.value = '';
   input.focus();
 }
 
+document.getElementById('fileInput').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert('รูปใหญ่เกินไป (สูงสุด 5 MB)');
+    this.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    socket.emit('friend_message', { msg: dataUrl, type: 'image' });
+    addMsg(dataUrl, 'me', 'image');
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
 socket.on('system', d => addSys(d.msg));
-socket.on('from_admin', d => addMsg(d.msg, 'them'));
+socket.on('from_admin', d => addMsg(d.msg, 'them', d.type || 'text'));
 
 document.getElementById('msgInput').addEventListener('keypress', e => {
   if (e.key === 'Enter') sendMsg();
