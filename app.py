@@ -1,9 +1,10 @@
-import os
 from gevent import monkey
 monkey.patch_all()
 
+import os
 from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
@@ -89,4 +90,4 @@ def on_disconnect():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
