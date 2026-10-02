@@ -19,11 +19,16 @@
          word-wrap: break-word; }
   .me { background: #0084ff; color: #fff; margin-left: auto; }
   .them { background: #e4e6eb; color: #000; }
-  #inputbar { display: flex; padding: 8px; border-top: 1px solid #ddd; }
-  #inputbar input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px;
-                    font-size: 15px; outline: none; }
-  #inputbar button { margin-left: 8px; padding: 10px 18px; border: 0;
-                     background: #0084ff; color: #fff; border-radius: 20px; cursor: pointer; }
+  .msg img { max-width: 100%; border-radius: 8px; display: block; margin-top: 4px; }
+  #inputbar { display: flex; padding: 8px; border-top: 1px solid #ddd; gap: 6px;
+              align-items: center; }
+  #inputbar input[type=text] { flex: 1; padding: 10px; border: 1px solid #ccc;
+                                border-radius: 20px; font-size: 15px; outline: none; }
+  #inputbar button { padding: 10px 16px; border: 0; background: #0084ff; color: #fff;
+                     border-radius: 20px; cursor: pointer; font-size: 15px; }
+  #fileBtn { background: #e4e6eb; color: #333; padding: 10px 14px; border-radius: 50%;
+             cursor: pointer; font-size: 18px; user-select: none; }
+  #fileInput { display: none; }
   #inputbar input:disabled, #inputbar button:disabled { opacity: .5; cursor: not-allowed; }
 </style>
 </head>
@@ -38,16 +43,18 @@
   <div id="header">เลือกเพื่อนทางซ้ายเพื่อเริ่มคุย</div>
   <div id="messages"></div>
   <div id="inputbar">
-    <input id="msgInput" placeholder="พิมพ์ข้อความ..." disabled autocomplete="off">
+    <label id="fileBtn" for="fileInput">📎</label>
+    <input id="fileInput" type="file" accept="image/*" disabled>
+    <input id="msgInput" type="text" placeholder="พิมพ์ข้อความ..." disabled autocomplete="off">
     <button id="sendBtn" onclick="sendMsg()" disabled>ส่ง</button>
   </div>
 </div>
 
 <script>
 const socket = io();
-let currentSid = null;
-let currentName = '';
-const convos = {};   // { sid: [ {text, cls}, ... ] }
+let curSid = null;
+let curName = '';
+const store = {};
 
 socket.emit('admin_join');
 
@@ -55,36 +62,6 @@ socket.on('friend_list', list => {
   const box = document.getElementById('friendList');
   box.innerHTML = '';
   document.getElementById('count').textContent = list.length;
-
-  list.forEach(f => {
-    // ใช้ sid เป็น key แต่แสดงชื่อ (sid มาจากฝั่ง server ส่งมาเป็น string เสมอ)
-    // หมายเหตุ: friend_list ส่ง dict {name: ...} ไม่มี sid — ดูวิธีแก้ด้านล่าง
-  });
-});
-</script>
-
-<!-- 
-  ⚠️ ด้านบน friend_list ปกติส่ง list ของ dict ที่มี key name เท่านั้น
-  ต้องปรับ server ให้ส่ง sid ด้วย — ดูโค้ดเต็มด้านล่าง
--->
-
-<script>
-// --- โค้ดเต็มด้านล่างนี้ใช้แทนด้านบน ---
-</script>
-
-<script>
-const socket2 = io();
-let curSid = null;
-let curName = '';
-const store = {};  // { sid: { name, msgs: [] } }
-
-socket2.emit('admin_join');
-
-socket2.on('friend_list', list => {
-  const box = document.getElementById('friendList');
-  box.innerHTML = '';
-  document.getElementById('count').textContent = list.length;
-
   list.forEach(f => {
     const div = document.createElement('div');
     div.className = 'friend' + (f.sid === curSid ? ' active' : '');
@@ -94,12 +71,11 @@ socket2.on('friend_list', list => {
   });
 });
 
-socket2.on('incoming', d => {
+socket.on('incoming', d => {
   if (!store[d.sid]) store[d.sid] = { name: d.name, msgs: [] };
-  store[d.sid].msgs.push({ text: d.msg, cls: 'them' });
-  if (curSid === d.sid) addMsg(d.msg, 'them');
+  store[d.sid].msgs.push({ text: d.msg, cls: 'them', type: d.type || 'text' });
+  if (curSid === d.sid) addMsg(d.msg, 'them', d.type || 'text');
   else {
-    // ไฮไลต์ว่าเพื่อนคนนี้ส่งข้อความมา
     const items = document.querySelectorAll('.friend');
     items.forEach(el => { if (el.textContent === d.name) el.style.fontWeight = 'bold'; });
   }
@@ -110,24 +86,28 @@ function selectFriend(sid, name) {
   document.getElementById('header').textContent = '💬 ' + name;
   document.getElementById('msgInput').disabled = false;
   document.getElementById('sendBtn').disabled = false;
-
-  // แสดงประวัติของเพื่อนคนนี้
+  document.getElementById('fileInput').disabled = false;
   const box = document.getElementById('messages');
   box.innerHTML = '';
-  (store[sid]?.msgs || []).forEach(m => addMsg(m.text, m.cls));
-
-  // ไฮไลต์ในรายการ
+  (store[sid]?.msgs || []).forEach(m => addMsg(m.text, m.cls, m.type));
   document.querySelectorAll('.friend').forEach(el => {
     el.classList.toggle('active', el.textContent === name);
+    if (el.textContent === name) el.style.fontWeight = 'normal';
   });
   document.getElementById('msgInput').focus();
 }
 
-function addMsg(text, cls) {
+function addMsg(content, cls, type = 'text') {
   const box = document.getElementById('messages');
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
-  div.textContent = text;
+  if (type === 'image') {
+    const img = document.createElement('img');
+    img.src = content;
+    div.appendChild(img);
+  } else {
+    div.textContent = content;
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
@@ -137,18 +117,39 @@ function sendMsg() {
   const input = document.getElementById('msgInput');
   const msg = input.value.trim();
   if (!msg) return;
-  socket2.emit('admin_message', { sid: curSid, msg });
-  addMsg(msg, 'me');
+  socket.emit('admin_message', { sid: curSid, msg, type: 'text' });
+  addMsg(msg, 'me', 'text');
   if (!store[curSid]) store[curSid] = { name: curName, msgs: [] };
-  store[curSid].msgs.push({ text: msg, cls: 'me' });
+  store[curSid].msgs.push({ text: msg, cls: 'me', type: 'text' });
   input.value = '';
   input.focus();
 }
+
+document.getElementById('fileInput').addEventListener('change', function() {
+  if (!curSid) return;
+  const file = this.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert('รูปใหญ่เกินไป (สูงสุด 5 MB)');
+    this.value = '';
+    return;
+  }
+  const sid = curSid;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    socket.emit('admin_message', { sid, msg: dataUrl, type: 'image' });
+    addMsg(dataUrl, 'me', 'image');
+    if (!store[sid]) store[sid] = { name: curName, msgs: [] };
+    store[sid].msgs.push({ text: dataUrl, cls: 'me', type: 'image' });
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
 
 document.getElementById('msgInput').addEventListener('keypress', e => {
   if (e.key === 'Enter') sendMsg();
 });
 </script>
-
 </body>
 </html>
